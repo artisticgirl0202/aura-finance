@@ -1,0 +1,41 @@
+# Aura Finance AI Classifier - Dependencies
+
+# FastAPI & Server
+fastapi==0.109.0
+uvicorn[standard]==0.27.0
+pydantic==2.5.3
+pydantic-settings==2.1.0
+
+# Database — SQLAlchemy 2.0 async
+sqlalchemy[asyncio]>=2.0
+aiosqlite>=0.19.0        # SQLite driver (development / default)
+asyncpg>=0.29.0          # PostgreSQL driver (production — install when needed)
+alembic>=1.13.0          # DB migrations
+
+# OpenAI (kept as optional fallback)
+openai==1.54.3
+
+# Google Gemini AI (primary classifier — free tier: 1,500 req/day)
+# Uses new google-genai SDK (google-generativeai is deprecated)
+google-genai>=1.0.0
+
+# Environment & Config
+python-dotenv==1.0.0
+
+# Open Banking & HTTP
+requests==2.31.0
+cryptography==42.0.0
+PyJWT==2.8.0
+
+# Security — JWT auth + password hashing
+python-jose[cryptography]>=3.3.0
+passlib[bcrypt]>=1.7.4
+
+# Optional: Production Optimization
+redis==5.0.1
+aioredis==2.0.1
+
+# Development & Testing
+pytest==7.4.3
+pytest-asyncio==0.23.3
+httpx==0.26.0
