@@ -12,14 +12,19 @@
  *   - Shake animation on auth failure (401/403)
  *   - Ambiguous error message from backend (email vs password)
  *   - "Forgot Password?" link after error
+ *   - autoComplete="new-password" to block autofill injection
+ *   - Pre-validation (8–72 chars, 72-byte bcrypt limit)
+ *   - Password cleared after submit / on unmount
  */
 
 import { AnimatePresence, motion } from 'framer-motion';
 import { Lock, Loader2, Mail, User, Wallet } from 'lucide-react';
+import { useCallback, useEffect, useState } from 'react';
 import { AuraLogo } from '../components/ui/AuraLogo';
-import { useState } from 'react';
-import { useAuth } from '../contexts/AuthContext';
 import { authForgotPassword } from '../api/client';
+import { useAuth } from '../contexts/AuthContext';
+import { parseApiError } from '../utils/parseApiError';
+import { validatePassword } from '../utils/passwordValidation';
 
 // ── Decorative animated background grid ──────────────────────────────────────
 
@@ -72,10 +77,11 @@ function CyberGrid() {
 // ── Input component ───────────────────────────────────────────────────────────
 
 function CyberInput({
-  label, type = 'text', value, onChange, placeholder, icon: Icon,
+  label, type = 'text', value, onChange, placeholder, icon: Icon, autoComplete,
 }: {
   label: string; type?: string; value: string;
   onChange: (v: string) => void; placeholder?: string; icon: React.ComponentType<Record<string, unknown>>;
+  autoComplete?: string;
 }) {
   const [focused, setFocused] = useState(false);
   return (
@@ -104,6 +110,7 @@ function CyberInput({
           onFocus={() => setFocused(true)}
           onBlur={() => setFocused(false)}
           placeholder={placeholder}
+          autoComplete={autoComplete}
           style={{
             width: '100%', padding: '14px 14px 14px 44px', background: 'transparent',
             border: 'none', outline: 'none', color: '#e2e8f0', fontSize: 14,
@@ -131,7 +138,10 @@ export default function LoginPage() {
   const [shake, setShake]       = useState(false);
   const [success, setSuccess]   = useState('');
 
-  const submit = async () => {
+  // Clear password on unmount (memory safety)
+  useEffect(() => () => setPassword(''), []);
+
+  const submit = useCallback(async () => {
     if (mode === 'forgot') {
       if (!email) { setError('Please enter your email.'); return; }
       setBusy(true);
@@ -141,23 +151,28 @@ export default function LoginPage() {
         await authForgotPassword(email);
         setSuccess('If that email exists, a reset link has been sent.');
         setTimeout(() => { setMode('login'); setSuccess(''); setError(''); }, 2500);
-      } catch (err: any) {
-        const msg = err?.response?.data?.detail || err?.message || 'Request failed. Please try again.';
-        setError(typeof msg === 'string' ? msg : JSON.stringify(msg));
+      } catch (err: unknown) {
+        setError(parseApiError(err));
       } finally {
         setBusy(false);
       }
       return;
     }
+
     if (!email || !password) { setError('Email and password are required.'); return; }
+    if (mode === 'register' && !name) { setError('Display name is required.'); return; }
+
+    const pwCheck = validatePassword(password);
+    if (!pwCheck.valid) { setError(pwCheck.message); return; }
+
     setBusy(true);
     setError('');
     setSuccess('');
     try {
       if (mode === 'login') {
         await login(email, password);
+        setPassword('');
       } else {
-        if (!name) { setError('Display name is required.'); setBusy(false); return; }
         await register({
           email,
           password,
@@ -165,15 +180,15 @@ export default function LoginPage() {
           currency,
           monthly_income: parseFloat(income) || 0,
         });
+        setPassword('');
       }
-    } catch (err: any) {
-      const msg = err?.response?.data?.detail || err?.message || 'Authentication failed.';
-      setError(typeof msg === 'string' ? msg : JSON.stringify(msg));
+    } catch (err: unknown) {
+      setError(parseApiError(err));
       if (mode === 'login') setShake(true);
     } finally {
       setBusy(false);
     }
-  };
+  }, [mode, email, password, name, income, login, register]);
 
   return (
     <div style={{
@@ -195,7 +210,7 @@ export default function LoginPage() {
           opacity: { duration: 0.5, ease: 'easeOut' },
           scale: { duration: 0.5, ease: 'easeOut' },
           y: { duration: 0.5, ease: 'easeOut' },
-          x: shake ? { duration: 0.5, ease: 'easeOut' } : 0,
+          x: shake ? { duration: 0.5, ease: 'easeOut' } : undefined,
         }}
         onAnimationComplete={() => setShake(false)}
         style={{
@@ -289,7 +304,8 @@ export default function LoginPage() {
             <CyberInput label="Email" type="email" value={email} onChange={setEmail}
               placeholder="you@example.com" icon={Mail} />
             <CyberInput label="Password" type="password" value={password} onChange={setPassword}
-              placeholder={mode === 'register' ? 'Min 8 characters' : 'Your password'} icon={Lock} />
+              placeholder={mode === 'register' ? '8–72 characters (bcrypt limit)' : 'Your password'}
+              icon={Lock} autoComplete="new-password" />
 
             {mode === 'register' && (
               <div style={{ display: 'flex', gap: 12 }}>
