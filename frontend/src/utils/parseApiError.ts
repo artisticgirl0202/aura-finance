@@ -43,16 +43,18 @@ export function parseApiError(error: unknown): string {
   // A. Pydantic 422 — detail is array of { type, msg, loc, ... }
   if (Array.isArray(detail) && detail.length > 0) {
     const first = detail[0] as { msg?: string; type?: string };
-    if (typeof first?.msg === 'string') {
-      return first.msg;
+    const rawMsg = (typeof first?.msg === 'string' ? first.msg : '') || (typeof first?.type === 'string' ? first.type : '');
+    if (rawMsg && (/72\s*(byte|character|char)/i.test(rawMsg) || /password.*72|72.*password/i.test(rawMsg))) {
+      return '비밀번호 검증에 실패했습니다. (최대 72자)';
     }
-    if (typeof first?.type === 'string') {
-      return first.type;
-    }
+    if (rawMsg) return rawMsg;
   }
 
   // B. 400/401/403 — detail is string
   if (typeof detail === 'string') {
+    if (/72\s*(byte|character|char)/i.test(detail) || /password.*72|72.*password/i.test(detail)) {
+      return '비밀번호 검증에 실패했습니다. (최대 72자)';
+    }
     return detail;
   }
 

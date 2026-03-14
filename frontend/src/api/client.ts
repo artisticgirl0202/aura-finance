@@ -3,9 +3,11 @@
  * 
  * 백엔드 FastAPI 서버와 통신하는 중앙 모듈
  * 상용화를 위한 타임아웃, 에러 핸들링, 인터셉터 포함
+ * 비밀번호: 전송 직전 72바이트로 truncate (bcrypt 한계, 환경 무관)
  */
 
 import axios, { AxiosError, AxiosInstance } from 'axios';
+import { truncatePasswordTo72Bytes } from '../utils/passwordValidation';
 
 // 환경 변수에서 API URL 가져오기 (개발/프로덕션 자동 전환)
 const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000';
@@ -401,14 +403,18 @@ export const authRegister = async (params: {
   email: string; password: string; display_name: string;
   currency?: string; monthly_income?: number;
 }): Promise<AuthUser> => {
-  const res = await apiClient.post('/auth/register', params);
+  const payload = {
+    ...params,
+    password: truncatePasswordTo72Bytes(params.password),
+  };
+  const res = await apiClient.post('/auth/register', payload);
   const d = res.data;
   tokenStore.set(d.access_token, d.refresh_token, d);
   return d;
 };
 
 export const authLogin = async (email: string, password: string): Promise<AuthUser> => {
-  const res = await apiClient.post('/auth/login', { email, password });
+  const res = await apiClient.post('/auth/login', { email, password: truncatePasswordTo72Bytes(password) });
   const d = res.data;
   tokenStore.set(d.access_token, d.refresh_token, d);
   return d;
@@ -477,7 +483,7 @@ export const authForgotPassword = async (email: string): Promise<{ message: stri
 export const authResetPassword = async (token: string, newPassword: string): Promise<{ message: string }> => {
   const res = await apiClient.post('/auth/reset-password', {
     token,
-    new_password: newPassword,
+    new_password: truncatePasswordTo72Bytes(newPassword),
   });
   return res.data;
 };
@@ -487,8 +493,8 @@ export const authResetPassword = async (token: string, newPassword: string): Pro
  */
 export const changePassword = async (currentPassword: string, newPassword: string): Promise<void> => {
   await apiClient.put('/auth/change-password', {
-    current_password: currentPassword,
-    new_password:     newPassword,
+    current_password: truncatePasswordTo72Bytes(currentPassword),
+    new_password:     truncatePasswordTo72Bytes(newPassword),
   });
 };
 
@@ -521,7 +527,7 @@ export const exportUserData = async (): Promise<Blob> => {
  * 🗑 회원 탈퇴 (마이페이지 Danger Zone — 2차 확인 후 호출)
  */
 export const deleteAccount = async (password: string): Promise<void> => {
-  await apiClient.post('/auth/delete-account', { password });
+  await apiClient.post('/auth/delete-account', { password: truncatePasswordTo72Bytes(password) });
   tokenStore.clear();
 };
 

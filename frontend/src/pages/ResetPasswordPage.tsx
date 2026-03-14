@@ -11,6 +11,7 @@ import { AuraLogo } from '../components/ui/AuraLogo';
 import { useState, useEffect } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { authResetPassword } from '../api/client';
+import { parseApiError } from '../utils/parseApiError';
 
 function CyberGrid() {
   return (
@@ -65,9 +66,8 @@ export default function ResetPasswordPage() {
       await authResetPassword(token, newPassword);
       setSuccess(true);
       setTimeout(() => navigate('/'), 2000);
-    } catch (err: any) {
-      const msg = err?.response?.data?.detail || err?.message || 'Reset failed. Please try again.';
-      setError(typeof msg === 'string' ? msg : JSON.stringify(msg));
+    } catch (err: unknown) {
+      setError(parseApiError(err));
     } finally {
       setBusy(false);
     }
@@ -156,7 +156,8 @@ export default function ResetPasswordPage() {
                 type="password"
                 value={newPassword}
                 onChange={e => setNewPassword(e.target.value)}
-                placeholder="Min 8 characters"
+                placeholder="Min 8 characters (max 72)"
+                maxLength={72}
                 style={{
                   width: '100%', padding: '14px 14px', borderRadius: 10,
                   border: '1px solid rgba(255,255,255,0.1)', background: 'transparent',
@@ -181,6 +182,7 @@ export default function ResetPasswordPage() {
                 value={confirmPassword}
                 onChange={e => setConfirmPassword(e.target.value)}
                 placeholder="Confirm new password"
+                maxLength={72}
                 style={{
                   width: '100%', padding: '14px 14px', borderRadius: 10,
                   border: '1px solid rgba(255,255,255,0.1)', background: 'transparent',

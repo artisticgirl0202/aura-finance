@@ -77,11 +77,11 @@ function CyberGrid() {
 // ── Input component ───────────────────────────────────────────────────────────
 
 function CyberInput({
-  label, type = 'text', value, onChange, placeholder, icon: Icon, autoComplete,
+  label, type = 'text', value, onChange, placeholder, icon: Icon, autoComplete, maxLength,
 }: {
   label: string; type?: string; value: string;
   onChange: (v: string) => void; placeholder?: string; icon: React.ComponentType<Record<string, unknown>>;
-  autoComplete?: string;
+  autoComplete?: string; maxLength?: number;
 }) {
   const [focused, setFocused] = useState(false);
   return (
@@ -111,6 +111,7 @@ function CyberInput({
           onBlur={() => setFocused(false)}
           placeholder={placeholder}
           autoComplete={autoComplete}
+          maxLength={maxLength}
           style={{
             width: '100%', padding: '14px 14px 14px 44px', background: 'transparent',
             border: 'none', outline: 'none', color: '#e2e8f0', fontSize: 14,
@@ -305,7 +306,7 @@ export default function LoginPage() {
               placeholder="you@example.com" icon={Mail} />
             <CyberInput label="Password" type="password" value={password} onChange={setPassword}
               placeholder={mode === 'register' ? '8–72 characters (bcrypt limit)' : 'Your password'}
-              icon={Lock} autoComplete="new-password" />
+              icon={Lock} autoComplete="new-password" maxLength={72} />
 
             {mode === 'register' && (
               <div style={{ display: 'flex', gap: 12 }}>

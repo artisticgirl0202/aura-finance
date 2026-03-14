@@ -14,6 +14,7 @@ import {
   changePassword,
   disconnectBank,
 } from '../../api/client';
+import { parseApiError } from '../../utils/parseApiError';
 
 const CURRENCIES = ['USD', 'EUR', 'GBP', 'SEK', 'KRW', 'JPY', 'CAD', 'AUD'];
 
@@ -197,8 +198,8 @@ function SecuritySection({ onLogout }: { onLogout: () => void }) {
       await changePassword(currentPw, newPw);
       setMsg('Password updated.');
       setCurrentPw(''); setNewPw(''); setConfirmPw('');
-    } catch (e: any) {
-      setMsg(e?.response?.data?.detail || 'Failed to change password.');
+    } catch (e: unknown) {
+      setMsg(parseApiError(e));
     } finally {
       setChanging(false);
     }
@@ -209,15 +210,15 @@ function SecuritySection({ onLogout }: { onLogout: () => void }) {
       <div style={{ fontSize: 12, fontWeight: 700, color: '#06b6d4', letterSpacing: 2, marginBottom: 14 }}>SECURITY</div>
       <div style={{ marginBottom: 14 }}>
         <label style={labelStyle}>Current Password</label>
-        <input type="password" value={currentPw} onChange={e => setCurrentPw(e.target.value)} style={inputStyle} placeholder="••••••••" />
+        <input type="password" value={currentPw} onChange={e => setCurrentPw(e.target.value)} style={inputStyle} placeholder="••••••••" maxLength={72} />
       </div>
       <div style={{ marginBottom: 14 }}>
         <label style={labelStyle}>New Password</label>
-        <input type="password" value={newPw} onChange={e => setNewPw(e.target.value)} style={inputStyle} placeholder="••••••••" />
+        <input type="password" value={newPw} onChange={e => setNewPw(e.target.value)} style={inputStyle} placeholder="••••••••" maxLength={72} />
       </div>
       <div style={{ marginBottom: 14 }}>
         <label style={labelStyle}>Confirm New Password</label>
-        <input type="password" value={confirmPw} onChange={e => setConfirmPw(e.target.value)} style={inputStyle} placeholder="••••••••" />
+        <input type="password" value={confirmPw} onChange={e => setConfirmPw(e.target.value)} style={inputStyle} placeholder="••••••••" maxLength={72} />
       </div>
       {msg && <div style={{ fontSize: 12, color: msg.includes('updated') ? '#10b981' : '#ef4444', marginBottom: 10 }}>{msg}</div>}
       <button onClick={handleChangePassword} disabled={changing} style={{
@@ -332,8 +333,8 @@ function DangerZoneSection({ onExport, onDelete }: { onExport: () => void; onDel
       setDeleteModal(false);
       setDeleteConfirm('');
       setDeletePw('');
-    } catch (e: any) {
-      setDeleteError(e?.response?.data?.detail || 'Failed to delete account.');
+    } catch (e: unknown) {
+      setDeleteError(parseApiError(e));
     } finally {
       setDeleting(false);
     }
@@ -401,7 +402,7 @@ function DangerZoneSection({ onExport, onDelete }: { onExport: () => void; onDel
               </div>
               <div style={{ marginBottom: 16 }}>
                 <label style={labelStyle}>Password</label>
-                <input type="password" value={deletePw} onChange={e => setDeletePw(e.target.value)} style={inputStyle} placeholder="••••••••" />
+                <input type="password" value={deletePw} onChange={e => setDeletePw(e.target.value)} style={inputStyle} placeholder="••••••••" maxLength={72} />
               </div>
               {deleteError && <div style={{ fontSize: 12, color: '#ef4444', marginBottom: 12 }}>{deleteError}</div>}
               <div style={{ display: 'flex', gap: 10 }}>

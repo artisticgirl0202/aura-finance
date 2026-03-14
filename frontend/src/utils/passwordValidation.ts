@@ -13,6 +13,23 @@ function utf8ByteLength(str: string): number {
 }
 
 /**
+ * Truncate password to max 72 bytes (bcrypt limit).
+ * Safe to call before every auth API — env-agnostic.
+ * Cuts at character boundary (no broken multi-byte chars).
+ */
+export function truncatePasswordTo72Bytes(password: string): string {
+  if (!password) return password;
+  const encoder = new TextEncoder();
+  if (encoder.encode(password).length <= MAX_BYTES) return password;
+  let result = '';
+  for (const char of password) {
+    if (encoder.encode(result + char).length > MAX_BYTES) break;
+    result += char;
+  }
+  return result;
+}
+
+/**
  * Validate password for register/login before API call.
  * Returns { valid: true } or { valid: false, message: string }.
  */
