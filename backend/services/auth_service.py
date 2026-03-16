@@ -14,7 +14,7 @@ JWT payload:
   iat      → issued-at timestamp
   type     → "access" | "refresh"
 
-Password hashing: bcrypt via passlib (cost factor 12)
+Password hashing: bcrypt (direct, cost factor 12)
 """
 
 import logging
@@ -22,9 +22,9 @@ import os
 from datetime import datetime, timedelta, timezone
 from typing import Optional
 
+import bcrypt
 from dotenv import load_dotenv
 from jose import JWTError, jwt
-from passlib.context import CryptContext
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 
@@ -48,15 +48,8 @@ ALGORITHM       = os.getenv("ALGORITHM", "HS256")
 ACCESS_EXPIRE   = int(os.getenv("ACCESS_TOKEN_EXPIRE_MINUTES", "30"))
 REFRESH_EXPIRE  = int(os.getenv("REFRESH_TOKEN_EXPIRE_DAYS",   "7"))
 
-# bcrypt: truncate_error=False so backend never raises on long passwords.
-# We pre-truncate to 72 UTF-8 bytes before hashing.
-pwd_context = CryptContext(
-    schemes=["bcrypt"],
-    deprecated="auto",
-    bcrypt__truncate_error=False,
-)
-
-BCRYPT_MAX_BYTES = 72  # bcrypt input limit
+BCRYPT_MAX_BYTES = 72   # bcrypt input limit
+BCRYPT_ROUNDS = 12     # cost factor (2^12 iterations)
 
 
 def _extract_password_str(value) -> str:
@@ -109,23 +102,28 @@ def extract_password_for_hashing(value) -> str:
 
 def hash_password(plain) -> str:
     """
-    Hash password with bcrypt.
+    Hash password with bcrypt (direct, no passlib).
     Extracts str (SecretStr), truncates to 72 UTF-8 bytes, then hashes.
     """
     raw = _extract_password_str(plain)
     safe = _truncate_password_for_bcrypt(raw)
-    # Debug: Render 터미널에서 정확한 원인 확인용
-    preview = str(safe)[:15] + ("..." if len(safe) > 15 else "")
-    logger.info("Hashing debug - Length: %d, Type: %s, Preview: %s", len(safe), type(plain).__name__, preview)
-    print(f"🔥 Hashing debug - Length: {len(safe)}, Type: {type(plain).__name__}, Preview: {preview}...")
-    return pwd_context.hash(safe)
+    password_bytes = safe.encode("utf-8")
+    if len(password_bytes) > BCRYPT_MAX_BYTES:
+        password_bytes = password_bytes[:BCRYPT_MAX_BYTES]
+    salt = bcrypt.gensalt(rounds=BCRYPT_ROUNDS)
+    hashed = bcrypt.hashpw(password_bytes, salt)
+    return hashed.decode("utf-8")
 
 
 def verify_password(plain, hashed: str) -> bool:
     """Verify password. Extracts str (SecretStr), truncates to match hashing."""
     raw = _extract_password_str(plain)
     safe = _truncate_password_for_bcrypt(raw)
-    return pwd_context.verify(safe, hashed)
+    password_bytes = safe.encode("utf-8")
+    if len(password_bytes) > BCRYPT_MAX_BYTES:
+        password_bytes = password_bytes[:BCRYPT_MAX_BYTES]
+    hashed_bytes = hashed.encode("utf-8")
+    return bcrypt.checkpw(password_bytes, hashed_bytes)
 
 
 # ── Token creation ────────────────────────────────────────────────────────────
