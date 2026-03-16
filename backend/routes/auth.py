@@ -33,6 +33,7 @@ from services.auth_service import (
     create_user,
     decode_token,
     delete_user_and_all_data,
+    extract_password_for_hashing,
     get_current_user_id,
     get_user_by_email,
     get_user_by_id,
@@ -116,11 +117,13 @@ async def register(payload: RegisterRequest, db: AsyncSession = Depends(get_db))
     Returns tokens immediately — no separate login step required.
     """
     try:
+        # Extract password as plain str (handles SecretStr); never pass model/dict
+        password_str = extract_password_for_hashing(payload.password)
         user = await create_user(
             db,
             email=payload.email,
             display_name=payload.display_name,
-            password=payload.password,
+            password=password_str,
             currency=payload.currency,
             monthly_income=payload.monthly_income,
         )
@@ -128,6 +131,9 @@ async def register(payload: RegisterRequest, db: AsyncSession = Depends(get_db))
         logger.info(f"New user registered: {payload.email}")
     except ValueError as exc:
         raise HTTPException(status_code=409, detail=str(exc))
+    except TypeError as exc:
+        logger.warning("Register password type error: %s", exc)
+        raise HTTPException(status_code=400, detail="Invalid password format.")
 
     return TokenResponse(
         access_token=create_access_token(user.id, user.email),

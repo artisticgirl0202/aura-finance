@@ -59,6 +59,25 @@ pwd_context = CryptContext(
 BCRYPT_MAX_BYTES = 72  # bcrypt input limit
 
 
+def _extract_password_str(value) -> str:
+    """
+    Extract plain string from password input.
+    Handles SecretStr (.get_secret_value()), ensures str, rejects dict/model.
+    """
+    if value is None:
+        raise TypeError("Password cannot be None")
+    if hasattr(value, "get_secret_value"):
+        return value.get_secret_value()
+    if isinstance(value, str):
+        return value
+    if isinstance(value, (dict, list)):
+        raise TypeError(f"Password must be str, got {type(value).__name__} (likely whole payload)")
+    # Pydantic model etc. - str() would produce long repr, reject explicitly
+    if hasattr(value, "model_dump") or hasattr(value, "dict"):
+        raise TypeError(f"Password must be str, got {type(value).__name__} (Pydantic model?)")
+    raise TypeError(f"Password must be str, got {type(value).__name__}")
+
+
 def _truncate_password_for_bcrypt(plain: str) -> str:
     """
     Ensure password is at most 72 UTF-8 bytes for bcrypt.
@@ -80,15 +99,32 @@ def _truncate_password_for_bcrypt(plain: str) -> str:
 
 # ── Password helpers ──────────────────────────────────────────────────────────
 
-def hash_password(plain: str) -> str:
-    """Hash password with bcrypt. Input is truncated to 72 UTF-8 bytes."""
-    safe = _truncate_password_for_bcrypt(plain)
+def extract_password_for_hashing(value) -> str:
+    """
+    Extract plain string from password input for hashing.
+    Handles SecretStr, rejects dict/model. Use before passing to hash_password.
+    """
+    return _extract_password_str(value)
+
+
+def hash_password(plain) -> str:
+    """
+    Hash password with bcrypt.
+    Extracts str (SecretStr), truncates to 72 UTF-8 bytes, then hashes.
+    """
+    raw = _extract_password_str(plain)
+    safe = _truncate_password_for_bcrypt(raw)
+    # Debug: Render 터미널에서 정확한 원인 확인용
+    preview = str(safe)[:15] + ("..." if len(safe) > 15 else "")
+    logger.info("Hashing debug - Length: %d, Type: %s, Preview: %s", len(safe), type(plain).__name__, preview)
+    print(f"🔥 Hashing debug - Length: {len(safe)}, Type: {type(plain).__name__}, Preview: {preview}...")
     return pwd_context.hash(safe)
 
 
-def verify_password(plain: str, hashed: str) -> bool:
-    """Verify password. Plain input is truncated to match hashing behavior."""
-    safe = _truncate_password_for_bcrypt(plain)
+def verify_password(plain, hashed: str) -> bool:
+    """Verify password. Extracts str (SecretStr), truncates to match hashing."""
+    raw = _extract_password_str(plain)
+    safe = _truncate_password_for_bcrypt(raw)
     return pwd_context.verify(safe, hashed)
 
 
