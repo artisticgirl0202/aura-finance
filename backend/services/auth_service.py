@@ -48,17 +48,48 @@ ALGORITHM       = os.getenv("ALGORITHM", "HS256")
 ACCESS_EXPIRE   = int(os.getenv("ACCESS_TOKEN_EXPIRE_MINUTES", "30"))
 REFRESH_EXPIRE  = int(os.getenv("REFRESH_TOKEN_EXPIRE_DAYS",   "7"))
 
-pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
+# bcrypt: truncate_error=False so backend never raises on long passwords.
+# We pre-truncate to 72 UTF-8 bytes before hashing.
+pwd_context = CryptContext(
+    schemes=["bcrypt"],
+    deprecated="auto",
+    bcrypt__truncate_error=False,
+)
+
+BCRYPT_MAX_BYTES = 72  # bcrypt input limit
+
+
+def _truncate_password_for_bcrypt(plain: str) -> str:
+    """
+    Ensure password is at most 72 UTF-8 bytes for bcrypt.
+    Prevents 'password cannot be longer than 72 bytes' from bcrypt backend.
+    Safely truncates without cutting multi-byte characters.
+    """
+    if not isinstance(plain, str):
+        raise TypeError(f"Password must be str, got {type(plain).__name__}")
+    if not plain:
+        return plain
+    encoded = plain.encode("utf-8")
+    if len(encoded) <= BCRYPT_MAX_BYTES:
+        return plain
+    # Truncate at 72 bytes; avoid cutting multi-byte UTF-8 sequence
+    truncated = encoded[:BCRYPT_MAX_BYTES]
+    # Decode, discarding incomplete trailing byte sequences
+    return truncated.decode("utf-8", errors="ignore").rstrip("\ufffd") or plain[:1]
 
 
 # ── Password helpers ──────────────────────────────────────────────────────────
 
 def hash_password(plain: str) -> str:
-    return pwd_context.hash(plain)
+    """Hash password with bcrypt. Input is truncated to 72 UTF-8 bytes."""
+    safe = _truncate_password_for_bcrypt(plain)
+    return pwd_context.hash(safe)
 
 
 def verify_password(plain: str, hashed: str) -> bool:
-    return pwd_context.verify(plain, hashed)
+    """Verify password. Plain input is truncated to match hashing behavior."""
+    safe = _truncate_password_for_bcrypt(plain)
+    return pwd_context.verify(safe, hashed)
 
 
 # ── Token creation ────────────────────────────────────────────────────────────
