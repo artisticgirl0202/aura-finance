@@ -35,10 +35,12 @@ export function DistrictDetailPanel({
   transactions,
   onClose,
 }: DistrictDetailPanelProps) {
-  // 선택된 구역의 거래만 필터링 (정규화된 district로 매칭)
+  // 선택된 구역의 거래만 필터링 (양쪽 모두 정규화하여 비교 — API 응답 district와 3D building name 일치)
   const filteredTransactions = transactions.filter((tx) => {
     const txDistrict = tx.classification?.district ?? (tx as any).district;
-    return normalizeDistrictFor3D(txDistrict) === selectedDistrict;
+    const normalizedTx = normalizeDistrictFor3D(txDistrict);
+    const normalizedSelected = normalizeDistrictFor3D(selectedDistrict);
+    return normalizedTx === normalizedSelected;
   });
 
   const totalAmount = filteredTransactions.reduce(

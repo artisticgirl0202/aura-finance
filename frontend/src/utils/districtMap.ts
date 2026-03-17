@@ -35,6 +35,19 @@ const DISTRICT_NORMALIZE: Record<string, string> = {
   'Salary': 'Salary',
   'Side Income': 'Side Income',
   'Unknown': 'Finance', // Unknown → 3D에 없으므로 Finance로 폴백
+  // 백엔드 CityDistrict enum name (혹시 API가 name 반환 시 대비)
+  'FOOD_CAFE': 'Food & Cafe',
+  'SHOPPING': 'Shopping',
+  'HOUSING': 'Housing & Utility',
+  'ENTERTAINMENT': 'Entertainment',
+  'TRANSPORT': 'Transport',
+  'HEALTHCARE': 'Healthcare',
+  'EDUCATION': 'Education',
+  'FREELANCE': 'Freelance',
+  'RENTAL_INCOME': 'Rental Income',
+  'SALARY': 'Salary',
+  'SIDE_INCOME': 'Side Income',
+  'UNKNOWN': 'Finance',
   // 유사 매칭 (오타/변형)
   'Housing': 'Housing & Utility',
   'Housing and Utility': 'Housing & Utility',
@@ -57,10 +70,17 @@ const DISTRICT_NORMALIZE: Record<string, string> = {
 /**
  * 트랜잭션 district 문자열을 3D 맵의 타겟 district로 정규화
  * districtPositions 키와 매칭되어 파티클이 올바른 건물로 날아감
+ *
+ * Idempotent: 이미 유효한 3D district 문자열이면 입력값 그대로 반환 (Unknown으로 매핑하지 않음)
  */
 export function normalizeDistrictFor3D(district: string | undefined | null): string {
   if (!district || !district.trim()) return 'Finance';
   const key = district.trim();
+
+  // 이미 유효한 3D district면 그대로 반환 (Idempotent — 렌더링 가능한 값은 건드리지 않음)
+  const exactMatch = DISTRICTS_3D.find((d) => d === key);
+  if (exactMatch) return exactMatch;
+
   const direct = DISTRICT_NORMALIZE[key] ?? DISTRICT_NORMALIZE[key.toLowerCase()];
   if (direct) return direct;
   const found = DISTRICTS_3D.find((d) => d.toLowerCase() === key.toLowerCase());

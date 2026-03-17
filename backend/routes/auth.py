@@ -249,8 +249,8 @@ RESET_TOKEN_EXPIRE_MINUTES = 15
 @router.post("/forgot-password")
 async def forgot_password(payload: ForgotPasswordRequest, db: AsyncSession = Depends(get_db)):
     """
-    Request password reset. User enumeration 방지: 존재 여부와 무관하게 항상 동일한 200 응답.
-    메일 발송 실패(SMTP 장애 등) 시에도 500을 반환하지 않고 내부 로그만 남김.
+    Request password reset. User enumeration 방지: 존재 여부와 무관하게 200 응답.
+    메일 발송 실패(SMTP 네트워크 오류 등) 시 500 반환 — 타임아웃 10초로 무한 대기 방지.
     """
     user = await get_user_by_email(db, payload.email.lower().strip())
     if user:
@@ -271,7 +271,16 @@ async def forgot_password(payload: ForgotPasswordRequest, db: AsyncSession = Dep
             await send_password_reset_email(user.email, token)
             logger.info("Password reset email sent to %s", user.email)
         except Exception as exc:
-            logger.error("Failed to send password reset email to %s: %s", user.email, exc)
+            logger.error(
+                "Failed to send password reset email to %s: %s",
+                user.email,
+                exc,
+                exc_info=True,
+            )
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail="Password reset email could not be sent. Please try again later.",
+            ) from exc
     return {"message": MSG_FORGOT_SUCCESS}
 
 

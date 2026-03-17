@@ -5,11 +5,14 @@ Aura Finance — Email Service (Gmail SMTP)
 비밀번호 재설정 등 트랜잭션 이메일 발송.
 Python 표준 라이브러리(smtplib, email.mime) 사용.
 환경 변수: MAIL_USERNAME, MAIL_PASSWORD, FRONTEND_URL
+
+Render 등 클라우드: IPv6 비활성화, 포트 465/587 Fallback, 타임아웃 10초
 """
 
 import asyncio
 import logging
 import os
+import socket
 import smtplib
 from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
@@ -21,11 +24,26 @@ load_dotenv()
 logger = logging.getLogger(__name__)
 
 SMTP_HOST = "smtp.gmail.com"
-SMTP_PORT = 587
+SMTP_PORT_SSL = 465  # SSL/TLS (Render에서 587 차단 시 사용)
+SMTP_PORT_STARTTLS = 587  # STARTTLS (fallback)
+SMTP_TIMEOUT = 10  # 네트워크 타임아웃 (초) — 무한 대기 방지
 
 MAIL_USERNAME = os.getenv("MAIL_USERNAME", "").strip()
 MAIL_PASSWORD = os.getenv("MAIL_PASSWORD", "").strip()
 FRONTEND_URL = os.getenv("FRONTEND_URL", "http://localhost:3000").rstrip("/")
+
+
+# ── IPv4 강제 (Render 등 IPv6 라우팅 불가 환경 대응) ───────────────────────
+_orig_getaddrinfo = socket.getaddrinfo
+
+
+def _ipv4_only_getaddrinfo(*args: object, **kwargs: object) -> list:
+    """IPv6 결과 제거 — IPv4(AF_INET)만 반환"""
+    results = _orig_getaddrinfo(*args, **kwargs)
+    return [r for r in results if r[0] == socket.AF_INET]
+
+
+socket.getaddrinfo = _ipv4_only_getaddrinfo
 
 
 def _build_reset_email_html(reset_url: str) -> str:
@@ -70,6 +88,9 @@ def _build_reset_email_html(reset_url: str) -> str:
 def _send_sync(to_email: str, reset_token: str) -> None:
     """
     Gmail SMTP 동기 발송 (이벤트 루프 블로킹 방지를 위해 asyncio.to_thread에서 호출)
+    - IPv4 강제 (모듈 로드 시 getaddrinfo 몽키패치)
+    - 465(SSL) 우선, 실패 시 587(STARTTLS) Fallback
+    - 타임아웃 10초로 무한 대기 방지
     """
     if not MAIL_USERNAME or not MAIL_PASSWORD:
         raise ValueError("MAIL_USERNAME and MAIL_PASSWORD must be set in .env")
@@ -83,10 +104,36 @@ def _send_sync(to_email: str, reset_token: str) -> None:
     msg["To"] = to_email
     msg.attach(MIMEText(html_content, "html", "utf-8"))
 
-    with smtplib.SMTP(SMTP_HOST, SMTP_PORT) as server:
-        server.starttls()
-        server.login(MAIL_USERNAME, MAIL_PASSWORD)
-        server.sendmail(MAIL_USERNAME, to_email, msg.as_string())
+    last_error: Exception | None = None
+
+    # 1) 465 SSL/TLS 시도 (Render 등에서 587 차단 시 사용)
+    try:
+        with smtplib.SMTP_SSL(
+            SMTP_HOST, SMTP_PORT_SSL, timeout=SMTP_TIMEOUT
+        ) as server:
+            server.login(MAIL_USERNAME, MAIL_PASSWORD)
+            server.sendmail(MAIL_USERNAME, to_email, msg.as_string())
+        return
+    except Exception as e:
+        last_error = e
+        logger.warning(
+            "SMTP 465 (SSL) failed for %s: %s — falling back to 587 (STARTTLS)",
+            to_email,
+            e,
+        )
+
+    # 2) 587 STARTTLS Fallback
+    try:
+        with smtplib.SMTP(SMTP_HOST, SMTP_PORT_STARTTLS, timeout=SMTP_TIMEOUT) as server:
+            server.starttls()
+            server.login(MAIL_USERNAME, MAIL_PASSWORD)
+            server.sendmail(MAIL_USERNAME, to_email, msg.as_string())
+        return
+    except Exception as e:
+        last_error = e
+        logger.warning("SMTP 587 (STARTTLS) also failed for %s: %s", to_email, e)
+
+    raise last_error or RuntimeError("SMTP send failed")
 
 
 async def send_password_reset_email(to_email: str, reset_token: str) -> None:

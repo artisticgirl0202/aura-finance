@@ -12,6 +12,7 @@ import {
   syncBankData,
 } from './api/client';
 import { getDistrictColor } from './constants/districtColors';
+import { normalizeDistrictFor3D } from './utils/districtMap';
 import { CityScene } from './components/3d/CityScene';
 import { AIAdvisorPanel } from './components/ui/AIAdvisorPanel';
 import { AIInsightToast, type UnifiedInsight } from './components/ui/AIInsightToast';
@@ -193,20 +194,24 @@ function App() {
       const res = await fetchTransactionHistory(params);
       const txs = res.data ?? [];
 
-      // 2. DB 응답으로 UI 갱신 + 캐시 저장 (tx_timestamp 포함 — DistrictDetailPanel 표시용)
-      const formatted = txs.map((t) => ({
-        id: t.id,
-        description: t.description,
-        amount: t.amount,
-        currency: t.currency || 'USD',
-        type: t.type || 'expense',
-        district: t.district,
-        confidence: t.confidence ?? 0,
-        reason: t.reason ?? null,
-        icon: t.icon ?? 'circle',
-        color: t.color ?? '#6b7280',
-        tx_timestamp: t.tx_timestamp ?? t.created_at ?? null,
-      }));
+      // 2. DB 응답으로 UI 갱신 + 캐시 저장 (district는 API/DB 값으로 정규화 — Finance로 잘못 떨어지지 않도록)
+      const formatted = txs.map((t) => {
+        const rawDistrict = t.district ?? 'Unknown';
+        const district = normalizeDistrictFor3D(rawDistrict);
+        return {
+          id: t.id,
+          description: t.description,
+          amount: t.amount,
+          currency: t.currency || 'USD',
+          type: t.type || 'expense',
+          district,
+          confidence: t.confidence ?? 0,
+          reason: t.reason ?? null,
+          icon: t.icon ?? 'circle',
+          color: t.color ?? '#6b7280',
+          tx_timestamp: t.tx_timestamp ?? t.created_at ?? null,
+        };
+      });
       setBankTransactions(formatted);
       setBankTransactionsBatch(formatted);
       if (txs.length > 0) setHasLoadedDemoData(true);
@@ -306,7 +311,7 @@ function App() {
     console.log(`🎬 Simulation state changed: ${simulationEnabled}`);
   }, [simulationEnabled]);
 
-  // 거래 분류 실행
+  // 거래 분류 실행 — API 응답 district만 사용, selectedDistrict 미사용
   const handleClassify = async () => {
     if (!inputDescription.trim()) {
         alert('Please enter merchant name');
@@ -322,7 +327,9 @@ function App() {
     );
     if (result) {
       refreshAnalytics();
-      loadTransactionsFromDb(true, true);
+      // Race 방지: loadTransactionsFromDb 호출 생략 — 낙관적 업데이트만 사용
+      // GET /transactions가 너무 빨리 호출되면 방금 추가한 데이터를 덮어써서 증발함
+      // 백엔드 /classify는 이미 DB 커밋 후 반환하므로, 새로고침 시 DB에서 정상 로드됨
     }
   };
 
@@ -362,7 +369,7 @@ function App() {
         icon: '🌟',
       });
       refreshAnalytics();
-      loadTransactionsFromDb(true, true);
+      // Race 방지: loadTransactionsFromDb 생략 — 각 classifyTransaction이 낙관적 업데이트로 상태에 추가
     } catch (err) {
       setSimulationToast({
         id: 'simulation-error',
