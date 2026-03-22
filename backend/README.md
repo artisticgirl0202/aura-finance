@@ -1,17 +1,17 @@
-# 🔥 Aura Finance Backend - AI Classifier Engine
+# Aura Finance Backend - AI Classification & Analytics API
 
-**GPT-4o Structured Outputs 기반 금융 데이터 분류 API**
+Multi-LLM fallback classification engine and financial analytics API built with FastAPI.
 
 ---
 
-## 📋 주요 엔드포인트
+## API Endpoints
 
-### 1. 헬스체크
+### Health Check
 ```
 GET /
 ```
 
-### 2. 단일 거래 분류
+### Single Transaction Classification
 ```
 POST /api/v1/classify
 ```
@@ -30,78 +30,130 @@ POST /api/v1/classify
 {
   "district": "Food & Cafe",
   "confidence": 0.95,
-  "reason": "Starbucks는 글로벌 커피 체인으로 식음료 카테고리",
+  "reason": "Recognized global coffee chain, mapped to Food & Beverage category.",
   "icon": "coffee",
   "color": "#f59e0b"
 }
 ```
 
-### 3. 배치 거래 분류
+### Batch Transaction Classification
 ```
 POST /api/v1/classify/batch
 ```
 
+Accepts an array of transaction objects (max 100) and processes them through the fallback pipeline. Results are automatically persisted to the database.
+
 **Request:**
 ```json
 [
-  {"description": "STARBUCKS", "amount": 5.5},
-  {"description": "NETFLIX.COM", "amount": 15.99}
+  {"description": "STARBUCKS", "amount": 5.5, "currency": "USD"},
+  {"description": "NETFLIX.COM", "amount": 15.99, "currency": "USD"}
 ]
 ```
 
-### 4. 구역 목록 조회
+### District List
 ```
 GET /api/v1/districts
 ```
 
+### Analytics Overview
+```
+GET /api/v1/analytics/overview
+```
+
+Returns budget vs actual, category spend rates, AI advice, and chart-ready statistics (spending distribution, monthly trend, month-over-month, volatility).
+
+### Analytics Insights
+```
+GET /api/v1/analytics/insights
+```
+
+Returns AI-generated smart alerts (warnings and praise) based on balance, spending, and goal progress.
+
 ---
 
-## 🚀 실행 방법
+## Getting Started
 
 ```bash
-# 의존성 설치
+# Install dependencies
 pip install -r requirements.txt
 
-# 환경 변수 설정
+# Configure environment variables
 cp env.example .env
-# .env 파일에 OPENAI_API_KEY 입력
+# Edit .env to add API keys (see Environment Variables section)
 
-# 서버 실행
+# Start the server
 python main.py
 ```
 
-서버가 `http://localhost:8000` 에서 실행됩니다.
-
-API 문서: http://localhost:8000/docs
+Server runs at `http://localhost:8000`.
+API documentation (Swagger UI): `http://localhost:8000/docs`
 
 ---
 
-## 🏗️ 아키텍처
+## Architecture
 
 ```
-main.py                 → FastAPI 진입점
+main.py                        # FastAPI entry point, route registration
+├── routes/
+│   ├── auth.py                # JWT authentication
+│   ├── transactions.py        # Classify-and-save endpoints
+│   ├── analytics.py           # Analytics overview, insights, goal forecast
+│   ├── goals.py               # Goal CRUD and progress
+│   ├── finance.py             # Finance overview
+│   ├── banking.py             # Bank connection and sync (Tink API)
+│   └── user_settings.py       # User preferences
+├── services/
+│   ├── ai_classifier.py       # Hybrid classification pipeline (Gemini -> OpenAI -> Mock)
+│   ├── analytics_service.py   # Budget vs actual, trend, AI advice aggregation
+│   ├── insights_service.py    # Rule-based smart alert generation
+│   └── mock_ai_engine.py      # Mock AI modules (M1-M6 production interfaces)
 ├── schemas/
-│   └── transaction.py  → Pydantic 데이터 모델
-└── services/
-    └── ai_classifier.py → GPT-4o 분류 로직
+│   └── transaction.py         # Pydantic models (ClassificationResult, TransactionInput)
+└── database/
+    ├── engine.py              # SQLAlchemy async engine (SQLite dev / PostgreSQL prod)
+    ├── models.py              # ORM models (Transaction, Budget, Goal, User, etc.)
+    └── crud.py                # Database query layer
 ```
 
 ---
 
-## 🔑 환경 변수
+## Classification Pipeline
 
-| 변수 | 설명 | 필수 |
-|------|------|------|
-| `OPENAI_API_KEY` | OpenAI API 키 | ✅ |
-| `API_HOST` | 서버 호스트 | ❌ (기본: 0.0.0.0) |
-| `API_PORT` | 서버 포트 | ❌ (기본: 8000) |
+The `classify_transaction` function follows a strict fallback order:
+
+1. **Rule-based (Dictionary + Regex):** Known-merchant dictionary with word-boundary regex matching. Returns immediately at 100% confidence.
+2. **In-memory Cache:** TTL-based cache for previously classified descriptions.
+3. **Gemini API (Primary):** Google Gemini 2.0 Flash for fast bulk processing.
+4. **OpenAI GPT-4o-mini (Secondary Fallback):** Handles edge cases using Structured Outputs with `response_format=ClassificationResult` to enforce schema compliance.
+5. **Mock Engine (Always-on Fallback):** Keyword-based deterministic classifier ensuring availability during full API outages.
+
+Set `USE_MOCK_AI=true` in `.env` to bypass all LLM calls during development.
 
 ---
 
-## 🧪 테스트
+## Environment Variables
+
+| Variable | Description | Required |
+|----------|-------------|----------|
+| `OPENAI_API_KEY` | OpenAI API key | No (optional fallback) |
+| `GOOGLE_API_KEY` | Google Gemini API key | No (optional primary) |
+| `USE_MOCK_AI` | Set `true` to skip all LLM calls | No (default: `false`) |
+| `DATABASE_URL` | SQLAlchemy async DB URL | No (default: SQLite) |
+| `API_HOST` | Server host | No (default: `0.0.0.0`) |
+| `API_PORT` | Server port | No (default: `8000`) |
+
+**DATABASE_URL examples:**
+```
+sqlite+aiosqlite:///./aura_finance.db       # default (development)
+postgresql+asyncpg://user:pw@host:5432/db   # production
+```
+
+---
+
+## Test Request
 
 ```bash
-# 단일 거래 테스트
 curl -X POST http://localhost:8000/api/v1/classify \
   -H "Content-Type: application/json" \
   -d '{"description": "STARBUCKS", "amount": 5.5}'
@@ -109,27 +161,9 @@ curl -X POST http://localhost:8000/api/v1/classify \
 
 ---
 
-## 🚀 상용화 최적화
+## Key Design Decisions
 
-- **비동기 처리**: `async/await`로 동시 요청 처리
-- **Structured Outputs**: Pydantic 모델로 응답 강제, 파싱 에러 0%
-- **에러 핸들링**: Fallback 로직으로 서비스 안정성 보장
-- **배치 API**: 여러 거래를 한 번에 처리하여 비용 절감
-
----
-
-## 📊 성능
-
-- **평균 응답 시간**: ~500ms (GPT-4o-mini)
-- **비용**: $0.00015/request (단일 분류 기준)
-- **동시 처리**: FastAPI 비동기로 수백 개 요청 동시 처리
-
----
-
-## 🔐 보안
-
-상용화 배포 시 고려사항:
-- CORS 오리진 제한
-- API 키 인증
-- Rate Limiting
-- HTTPS 적용
+- **Async throughout:** FastAPI + SQLAlchemy async for concurrent request handling
+- **Schema enforcement:** Pydantic `response_format` on the OpenAI path eliminates malformed JSON outputs
+- **Graceful degradation:** Every analytics endpoint returns a safe empty structure instead of a 500 error
+- **Database agnostic:** Switch between SQLite and PostgreSQL via a single `DATABASE_URL` environment variable
